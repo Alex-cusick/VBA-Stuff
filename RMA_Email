@@ -1,0 +1,98 @@
+Public Sub Workbook_Open()
+    'Application.Wait (Now + TimeValue("0:01:00"))
+    Dim OutApp As Object
+    Dim OutMail As Object
+    Dim rng As Range
+    Dim Ash As Worksheet
+    Dim Rcount As Double
+    Dim Rnum As Double
+    Dim FilterRange As Range
+    Dim FieldNum As Integer
+    Dim mailAddress As String
+    Dim NewWB As Workbook
+    Dim lo As ListObject
+    Dim TempFilePath As String
+    Dim TempFileName As String
+    Dim FileExtStr As String
+    Dim FileFormatNum As Long
+    Dim dStart As Date
+    Dim dEnd As Date
+
+    On Error GoTo cleanup
+    Set OutApp = CreateObject("Outlook.Application")
+
+    With Application
+        .EnableEvents = False
+        '.ScreenUpdating = False
+    End With
+    ActiveWorkbook.RefreshAll
+    Application.CalculateUntilAsyncQueriesDone
+    Set Ash = Sheet2
+    Set FilterRange = Ash.Range("A1:Y" & Ash.Rows.Count)
+    FieldNum = 7
+    'MsgBox "1"
+    Rcount = Application.WorksheetFunction.CountA(Worksheets("Mailinfo").Columns(1))
+        For Rnum = 1 To Rcount - 1
+            On Error Resume Next
+            Ash.AutoFilterMode = False
+            Set lo = Sheet2.ListObjects(1)
+            lo.AutoFilter.ShowAllData
+            mailAddress = Worksheets("Mailinfo").Cells(Rnum, 2).Value
+            On Error GoTo 0
+            If mailAddress <> "" Then
+                Ash.ListObjects("RGAReview").Range.AutoFilter Field:=7, Criteria1:=Worksheets("Mailinfo").Cells(Rnum, 1).Value
+                Ash.ListObjects("RGAReview").Range.AutoFilter Field:=8, Criteria1:=">=" & Format(DateAdd("m", -6, Now()), "yyyy-mm-dd")
+                On Error Resume Next
+                Set rng = Ash.AutoFilter.Range.SpecialCells(xlCellTypeVisible)
+                On Error GoTo 0
+                Set NewWB = Workbooks.Add(xlWBATWorksheet)
+                rng.Copy
+                With NewWB.Sheets(1)
+                    .Cells(1).PasteSpecial Paste:=8
+                    .Cells(1).PasteSpecial Paste:=xlPasteValues
+                    .Cells(1).PasteSpecial Paste:=xlPasteFormats
+                    .Cells(1).Select
+                    Application.CutCopyMode = False
+                End With
+                TempFilePath = Environ$("temp") & "\"
+                TempFileName = Ash.Parent.Name & " " & Format(Now, "dd-mmm-yy h-mm-ss")
+                FileExtStr = ".xlsx": FileFormatNum = 51
+                Set OutMail = OutApp.CreateItem(0)
+                With NewWB
+                    .SaveAs TempFilePath & TempFileName _
+                          & FileExtStr, FileFormat:=FileFormatNum
+                    On Error Resume Next
+                    With OutMail
+                        .To = mailAddress
+                        .Subject = "RGA Update for " & Format(Now, "dd-mmm-yy")
+                        .Attachments.Add NewWB.FullName
+                        .Body = "Here are all RGAs for this region entered in the last six months. " & _
+                        "Please review and add info in Facts to the 'Error Code Notes' of any RGAs with an empty notes section." & _
+                        vbNewLine & "Instructions link: T:\Warehouse Files\Cusick Transition Folder\Training\RGA Entry.docx" & _
+                        vbNewLine & "The notes must appear under 'Error Code Notes'  in order to show up in latitude and the daily dash." & _
+                        vbNewLine & vbNewLine & "Thank you" & vbNewLine & "-Alex C." & vbNewLine & _
+                        vbNewLine & vbNewLine & "Automatic message sent on " & Now
+                        '.Display
+                        .Send
+                    End With
+                    On Error GoTo 0
+                    .Close SaveChanges:=False
+                End With
+                Set OutMail = Nothing
+                Kill TempFilePath & TempFileName & FileExtStr
+            End If
+            Ash.AutoFilterMode = False
+        Next Rnum
+    Set OutApp = Nothing
+    Application.DisplayAlerts = False
+    Application.DisplayAlerts = True
+    Application.Wait (Now + TimeValue("0:01:00"))
+    Application.Quit
+cleanup:
+    With Application
+        .EnableEvents = True
+        .ScreenUpdating = True
+    End With
+    Application.Wait (Now + TimeValue("0:01:00"))
+    Application.Quit
+End Sub
